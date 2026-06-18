@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 # Async runtime
 tokio = { version = "1.38", features = ["full"] }
+tokio-util = "0.7"
 
 # DNS
 hickory-server = "0.24"
