@@ -39,25 +39,39 @@ A dynamic DNS redirector with REST API and Web UI, designed for security researc
 
 - Rust 1.70 or later
 - SQLite 3
-- Node.js 18+ (for frontend)
+- Node.js 20+ (for frontend development)
+- Podman 5.8.2+ or Docker (for containerized deployment)
 
-### Building
+### Option 1: Quick Start with Podman Compose (Recommended)
+
+```bash
+# Build and start all services
+podman compose -f container-compose.yml up -d
+
+# Access the application
+# - Web UI: http://localhost:3000
+# - API (via frontend proxy): http://localhost:3000/api/v1
+# - DNS Server: localhost:53 (UDP/TCP)
+
+# View logs
+podman compose -f container-compose.yml logs -f
+
+# Stop services
+podman compose -f container-compose.yml down
+```
+
+### Option 2: Manual Build and Run
+
+**Backend:**
 
 ```bash
 cd backend
 cargo build --release
-```
 
-### Initialize Database
-
-```bash
-# Create database and run migrations
+# Initialize database
 sqlite3 goblin.db < migrations/001_initial.sql
-```
 
-### Running
-
-```bash
+# Run the server
 cargo run
 ```
 
@@ -70,6 +84,14 @@ Note: Binding to port 53 requires root/administrator privileges. You can use a d
 
 ```bash
 cargo run -- --dns-bind-address 0.0.0.0:5353
+```
+
+**Frontend:**
+
+```bash
+cd frontend
+npm install
+npm run dev  # Development server on http://localhost:5173
 ```
 
 ### Configuration
@@ -132,12 +154,15 @@ sqlite3 goblin.db "SELECT * FROM statistics;"
 
 ### Testing REST API
 
-The REST API is available at `http://localhost:8080/api/v1` by default.
+**Architecture Note:** The frontend now acts as a reverse proxy for the backend API. All API requests should be sent through the frontend at `http://localhost:3000/api/v1`. The backend API port (8080) is not directly exposed in production deployments for security reasons.
 
 **API Endpoints:**
 
 ```bash
-# Health check
+# Health check (via frontend proxy)
+curl http://localhost:3000/api/v1/health
+
+# Or direct backend access (development only, if port 8080 is exposed)
 curl http://localhost:8080/api/v1/health
 
 # Upstream Resolvers
@@ -164,8 +189,8 @@ GET    /api/v1/stats/summary          # Get summary
 **Example API Usage:**
 
 ```bash
-# Create a priority rule
-curl -X POST http://localhost:8080/api/v1/rules \
+# Create a priority rule (via frontend proxy)
+curl -X POST http://localhost:3000/api/v1/rules \
   -H "Content-Type: application/json" \
   -d '{
     "domain": "malicious.com",
@@ -175,23 +200,57 @@ curl -X POST http://localhost:8080/api/v1/rules \
   }'
 
 # List all rules
-curl http://localhost:8080/api/v1/rules | jq '.'
+curl http://localhost:3000/api/v1/rules | jq '.'
 
 # Toggle a rule
-curl -X PATCH http://localhost:8080/api/v1/rules/1/toggle
+curl -X PATCH http://localhost:3000/api/v1/rules/1/toggle
 
 # Get statistics summary
-curl http://localhost:8080/api/v1/stats/summary | jq '.'
+curl http://localhost:3000/api/v1/stats/summary | jq '.'
 ```
 
 ## Architecture
+
+### System Design
+
+GOBLIN uses a **frontend-as-proxy** architecture for security and simplified deployment:
+
+```
+┌─────────────┐
+│   Client    │
+└──────┬──────┘
+       │
+       │ HTTP (Port 3000)
+       ▼
+┌─────────────────────────┐
+│  Frontend (nginx)       │
+│  - Serves React UI      │
+│  - Proxies /api/* to    │
+│    backend              │
+└──────┬──────────────────┘
+       │
+       │ Internal network only
+       ▼
+┌─────────────────────────┐
+│  Backend (Rust)         │
+│  - DNS Server (Port 53) │
+│  - REST API (Port 8080) │
+│    (not exposed)        │
+└─────────────────────────┘
+```
+
+**Security Benefits:**
+- Backend API port is not exposed to users
+- Single entry point (port 3000) for all HTTP traffic
+- nginx handles SSL termination and security headers
+- Reduced attack surface
 
 ### Backend (Rust)
 
 ```
 backend/
 ├── src/
-│   ├── main.rs           # Application entry point
+│   ├── main.rs           # Application entry point with signal handling
 │   ├── config.rs         # Configuration management
 │   ├── db/               # Database layer
 │   │   ├── models.rs     # Data models
@@ -205,9 +264,22 @@ backend/
 │   │   └── cache.rs      # In-memory rule cache
 │   ├── stats/            # Statistics collection
 │   │   └── collector.rs  # Async stats collector
-│   └── api/              # REST API (Phase 3)
+│   └── api/              # REST API with Axum
 └── migrations/
     └── 001_initial.sql   # Database schema
+```
+
+### Frontend (React + TypeScript)
+
+```
+frontend/
+├── src/
+│   ├── api/              # API client (uses relative paths)
+│   ├── components/       # React components
+│   ├── hooks/            # Custom React hooks
+│   └── types/            # TypeScript type definitions
+├── nginx.conf            # nginx config with API proxy
+└── docker-entrypoint.sh  # Container startup script
 ```
 
 ### Database Schema
@@ -238,30 +310,44 @@ backend/
 
 ## Dependencies
 
+### Backend
 - **tokio** - Async runtime
 - **hickory-dns** - DNS protocol implementation
-- **axum** - Web framework (Phase 3)
+- **axum** - Web framework for REST API
 - **sqlx** - Async database driver
 - **tracing** - Structured logging
 - **clap** - CLI argument parsing
+- **tower-http** - CORS middleware
+
+### Frontend
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **TanStack Query** - Data fetching and caching
+- **axios** - HTTP client
+- **Tailwind CSS** - Styling
+- **nginx** - Reverse proxy and static file serving
 
 ## Development
 
-### Running Tests
+### Backend Development
+
+**Running Tests:**
 
 ```bash
+cd backend
 cargo test
 ```
 
-### Building for Production
+**Building for Production:**
 
 ```bash
+cd backend
 cargo build --release
 ```
 
 The binary will be in `target/release/goblin`.
 
-### Logging
+**Logging:**
 
 Set log level via environment variable or CLI:
 
@@ -270,6 +356,47 @@ LOG_LEVEL=debug cargo run
 ```
 
 Available levels: trace, debug, info, warn, error
+
+### Frontend Development
+
+**Development Server:**
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The development server starts on `http://localhost:5173` with hot module reloading.
+
+**Environment Configuration:**
+
+Create a `.env.local` file for local development:
+
+```bash
+# Points to your local backend API
+VITE_API_BASE_URL=http://localhost:8080/api/v1
+```
+
+**Building for Production:**
+
+```bash
+npm run build
+```
+
+The production build will be in `frontend/dist/`.
+
+**Type Checking:**
+
+```bash
+npm run type-check
+```
+
+**Linting:**
+
+```bash
+npm run lint
+```
 
 ## Deployment
 
@@ -289,8 +416,8 @@ podman compose down
 Services:
 
 - **DNS Server**: `localhost:53` (UDP/TCP)
-- **REST API**: `http://localhost:8080/api/v1`
 - **Web UI**: `http://localhost:3000`
+- **REST API**: `http://localhost:3000/api/v1` (proxied through frontend)
 
 ### Production Deployment
 
