@@ -41,7 +41,7 @@ services:
     ports:
       - "3000:80"        # Web UI
     environment:
-      - VITE_API_URL=http://localhost:8080/api/v1
+      - BACKEND_URL=http://localhost:8080
     depends_on:
       - backend
     restart: unless-stopped
