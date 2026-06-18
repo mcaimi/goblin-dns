@@ -26,84 +26,85 @@ export default function ResolverList() {
     }
   };
 
-  if (isLoading) return <div>Loading resolvers...</div>;
-  if (error) return <div>Error loading resolvers: {error.message}</div>;
+  if (isLoading) return <div className="loading">Loading resolvers...</div>;
+  if (error) return <div className="error">Error loading resolvers: {error.message}</div>;
 
   const resolvers = data?.data || [];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h2>Upstream Resolvers</h2>
-        <button onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : 'Add Resolver'}
-        </button>
-      </div>
-
       {showForm && (
-        <form onSubmit={handleSubmit} style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ccc' }}>
-          <div style={{ marginBottom: '10px' }}>
-            <label>
-              IP Address:
+        <div className="card">
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>IP Address</label>
               <input
                 type="text"
                 value={formData.ip_address}
                 onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
                 placeholder="8.8.8.8:53"
                 required
-                style={{ marginLeft: '10px', padding: '5px' }}
               />
-            </label>
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label>
-              Domain:
+            </div>
+            <div className="form-group">
+              <label>Domain</label>
               <input
                 type="text"
                 value={formData.domain}
                 onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
                 placeholder="core or example.com"
                 required
-                style={{ marginLeft: '10px', padding: '5px' }}
               />
-            </label>
-          </div>
-          <button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating...' : 'Create Resolver'}
-          </button>
-        </form>
-      )}
-
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#f0f0f0' }}>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>ID</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>IP Address</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Domain</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {resolvers.map((resolver) => (
-            <tr key={resolver.id}>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>{resolver.id}</td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>{resolver.ip_address}</td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>{resolver.domain}</td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>
-                <button onClick={() => handleDelete(resolver.id)} style={{ color: 'red' }}>
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {resolvers.length === 0 && (
-        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-          No upstream resolvers configured
+            </div>
+            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Creating...' : 'Create Resolver'}
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setShowForm(false)} style={{ marginLeft: '10px' }}>
+              Cancel
+            </button>
+          </form>
         </div>
       )}
+
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Upstream Resolvers</h2>
+          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancel' : 'Add Resolver'}
+          </button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>IP Address</th>
+              <th>Domain</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resolvers.map((resolver) => (
+              <tr key={resolver.id}>
+                <td>{resolver.id}</td>
+                <td>{resolver.ip_address}</td>
+                <td>{resolver.domain}</td>
+                <td>
+                  <button className="btn-danger" onClick={() => handleDelete(resolver.id)}>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {resolvers.length === 0 && (
+          <p style={{ textAlign: 'center', color: '#95a5a6', padding: '20px' }}>
+            No upstream resolvers configured
+          </p>
+        )}
+      </div>
     </div>
   );
 }

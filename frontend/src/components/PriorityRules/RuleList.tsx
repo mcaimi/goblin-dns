@@ -37,119 +37,113 @@ export default function RuleList() {
     await toggleMutation.mutateAsync(id);
   };
 
-  if (isLoading) return <div>Loading rules...</div>;
-  if (error) return <div>Error loading rules: {error.message}</div>;
+  if (isLoading) return <div className="loading">Loading rules...</div>;
+  if (error) return <div className="error">Error loading rules: {error.message}</div>;
 
   const rules = data?.data || [];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h2>Priority Rules</h2>
-        <button onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : 'Add Rule'}
-        </button>
-      </div>
-
       {showForm && (
-        <form onSubmit={handleSubmit} style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ccc' }}>
-          <div style={{ marginBottom: '10px' }}>
-            <label>
-              Domain:
+        <div className="card">
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>Domain</label>
               <input
                 type="text"
                 value={formData.domain}
                 onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
                 placeholder="evil.com"
                 required
-                style={{ marginLeft: '10px', padding: '5px', width: '300px' }}
               />
-            </label>
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label>
-              Client Filter (optional):
+            </div>
+            <div className="form-group">
+              <label>Client Filter (optional)</label>
               <input
                 type="text"
                 value={formData.client_filter || ''}
                 onChange={(e) => setFormData({ ...formData, client_filter: e.target.value })}
                 placeholder="192.168.1.0/24 or empty for all"
-                style={{ marginLeft: '10px', padding: '5px', width: '300px' }}
               />
-            </label>
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label>
-              Target IP:
+            </div>
+            <div className="form-group">
+              <label>Target IP</label>
               <input
                 type="text"
                 value={formData.target_ip}
                 onChange={(e) => setFormData({ ...formData, target_ip: e.target.value })}
                 placeholder="127.0.0.1"
                 required
-                style={{ marginLeft: '10px', padding: '5px', width: '300px' }}
               />
-            </label>
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label>
+            </div>
+            <div className="checkbox-container">
               <input
                 type="checkbox"
                 checked={formData.active}
                 onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
               />
-              {' '}Active
-            </label>
-          </div>
-          <button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating...' : 'Create Rule'}
-          </button>
-        </form>
-      )}
-
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#f0f0f0' }}>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>ID</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Domain</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Client Filter</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Target IP</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Status</th>
-            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ccc' }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rules.map((rule) => (
-            <tr key={rule.id} style={{ backgroundColor: rule.active ? 'white' : '#f9f9f9' }}>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>{rule.id}</td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>{rule.domain}</td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>
-                {rule.client_filter || 'All clients'}
-              </td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>{rule.target_ip}</td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>
-                <span style={{ color: rule.active ? 'green' : 'gray' }}>
-                  {rule.active ? 'Active' : 'Inactive'}
-                </span>
-              </td>
-              <td style={{ padding: '10px', border: '1px solid #ccc' }}>
-                <button onClick={() => handleToggle(rule.id)} style={{ marginRight: '10px' }}>
-                  {rule.active ? 'Deactivate' : 'Activate'}
-                </button>
-                <button onClick={() => handleDelete(rule.id)} style={{ color: 'red' }}>
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {rules.length === 0 && (
-        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-          No priority rules configured
+              <label>Active</label>
+            </div>
+            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Creating...' : 'Create Rule'}
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setShowForm(false)} style={{ marginLeft: '10px' }}>
+              Cancel
+            </button>
+          </form>
         </div>
       )}
+
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Priority Rules</h2>
+          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancel' : 'Add Rule'}
+          </button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Domain</th>
+              <th>Client Filter</th>
+              <th>Target IP</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rules.map((rule) => (
+              <tr key={rule.id}>
+                <td>{rule.id}</td>
+                <td>{rule.domain}</td>
+                <td>{rule.client_filter || 'All clients'}</td>
+                <td>{rule.target_ip}</td>
+                <td>
+                  <span className={rule.active ? 'badge badge-success' : 'badge badge-secondary'}>
+                    {rule.active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td>
+                  <button className="btn-secondary" onClick={() => handleToggle(rule.id)}>
+                    {rule.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button className="btn-danger" onClick={() => handleDelete(rule.id)} style={{ marginLeft: '5px' }}>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {rules.length === 0 && (
+          <p style={{ textAlign: 'center', color: '#95a5a6', padding: '20px' }}>
+            No priority rules configured
+          </p>
+        )}
+      </div>
     </div>
   );
 }
