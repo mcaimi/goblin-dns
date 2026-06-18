@@ -4,13 +4,13 @@ This guide covers deploying GOBLIN in various environments.
 
 ## Table of Contents
 
-- [Quick Start with Docker](#quick-start-with-docker)
+- [Quick Start with Podman](#quick-start-with-podman)
 - [Production Deployment](#production-deployment)
 - [Manual Deployment](#manual-deployment)
 - [Security Considerations](#security-considerations)
 - [Monitoring and Maintenance](#monitoring-and-maintenance)
 
-## Quick Start with Docker
+## Quick Start with Podman
 
 The fastest way to get GOBLIN running is with Podman Compose.
 
@@ -23,23 +23,23 @@ The fastest way to get GOBLIN running is with Podman Compose.
 
 ```bash
 # Build and start all services
-podman compose up -d
+podman compose -f container-compose.yml up -d
 ```
 
 ### Step 2: Verify Services
 
 ```bash
 # Check service status
-podman compose ps
+podman compose -f container-compose.yml ps
 
 # View logs
-podman compose logs -f
+podman compose -f container-compose.yml logs -f
 
 # Test DNS server
 dig @localhost evil.com
 
-# Test API
-curl http://localhost:8080/api/v1/health
+# Test API (via frontend proxy)
+curl http://localhost:3000/api/v1/health
 
 # Access Web UI
 open http://localhost:3000
@@ -48,11 +48,19 @@ open http://localhost:3000
 ### Step 3: Stop Services
 
 ```bash
-podman compose down
+podman compose -f container-compose.yml down
 
 # Stop and remove volumes (WARNING: deletes database)
-podman compose down -v
+podman compose -f container-compose.yml down -v
 ```
+
+### Architecture Notes
+
+**Frontend as API Proxy**: The frontend now acts as a reverse proxy for the backend API. This means:
+- The backend API port (8080) is **not** directly exposed to users
+- All API requests go through the frontend container at `http://localhost:3000/api/`
+- The frontend's nginx server proxies `/api/*` requests to the backend
+- This provides better security and simplifies deployment (single entry point)
 
 ## Production Deployment
 
@@ -71,11 +79,12 @@ LOG_LEVEL=info
 DEFAULT_UPSTREAM=8.8.8.8:53
 RULES_CACHE_TTL=60
 
-# Frontend
-VITE_API_URL=http://your-domain.com:8080/api/v1
+# Frontend (nginx proxy configuration)
+# BACKEND_URL should point to the backend service name in Docker network
+BACKEND_URL=http://backend:8080/api/v1
 ```
 
-1. **Update podman compose.yml**
+1. **Update container-compose.yml**
 
 For production, consider:
 
@@ -83,21 +92,32 @@ For production, consider:
 - Adding resource limits
 - Configuring logging
 - Setting up backup volumes
+- **Remove the backend API port exposure** (8080) from the compose file for security
+
+Example production changes:
+
+```yaml
+backend:
+  ports:
+    - "53:53/udp"      # DNS UDP
+    - "53:53/tcp"      # DNS TCP
+    # Remove: - "8080:8080"  # API not directly exposed
+```
 
 1. **Deploy**
 
 ```bash
 # Build and start in detached mode
-podman compose up -d --build
+podman compose -f container-compose.yml up -d --build
 
 # View logs
-podman compose logs -f backend
-podman compose logs -f frontend
+podman compose -f container-compose.yml logs -f backend
+podman compose -f container-compose.yml logs -f frontend
 ```
 
 ### Reverse Proxy Setup (nginx)
 
-For production, put GOBLIN behind a reverse proxy:
+For production, put GOBLIN behind a reverse proxy. Since the frontend now handles API proxying internally, you only need to expose the frontend:
 
 ```nginx
 # /etc/nginx/sites-available/goblin
@@ -105,27 +125,25 @@ server {
     listen 80;
     server_name goblin.yourdomain.com;
 
-    # Frontend
+    # Frontend (handles both UI and API via internal proxy)
     location / {
         proxy_pass http://localhost:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # API
-    location /api/ {
-        proxy_pass http://localhost:8080/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # DNS over HTTPS (optional)
-    location /dns-query {
-        proxy_pass http://localhost:8080;
-        proxy_set_header Host $host;
-    }
+    # Optional: DNS over HTTPS (if you need direct backend access)
+    # Uncomment only if required
+    # location /dns-query {
+    #     proxy_pass http://localhost:8080;
+    #     proxy_set_header Host $host;
+    # }
 }
 ```
+
+**Note**: The frontend container's nginx now proxies `/api/*` requests to the backend automatically. You don't need separate API routing in your external reverse proxy.
 
 Enable and restart nginx:
 
@@ -281,17 +299,25 @@ sudo iptables -A INPUT -p udp --dport 53 -m state --state NEW -m recent --update
 
 ### API Security
 
+1. **Network Isolation**
+
+The frontend now proxies all API requests, so the backend API doesn't need to be directly exposed:
+
+- **Production**: Remove port `8080` from the backend service in `container-compose.yml`
+- The backend is only accessible within the Docker network via the frontend proxy
+- This significantly reduces the attack surface
+
 1. **Add Authentication** (Future Enhancement)
 
 Consider adding JWT-based authentication for the API in production.
 
 1. **CORS Configuration**
 
-Limit CORS to specific origins in production:
+With the frontend proxy architecture, CORS can be disabled entirely since all requests come from the same origin:
 
 ```bash
-# Set environment variable
-API_CORS_ENABLED=false  # Disable if using reverse proxy
+# Set environment variable (recommended for production)
+API_CORS_ENABLED=false
 ```
 
 ### Database Security
@@ -331,23 +357,26 @@ chown goblin:goblin /var/lib/goblin/goblin.db
 ### Health Checks
 
 ```bash
-# Backend health
-curl http://localhost:8080/api/v1/health
+# Backend health (via frontend proxy)
+curl http://localhost:3000/api/v1/health
 
 # Frontend health
 curl -I http://localhost:3000
 
 # DNS resolution test
 dig @localhost test.com
+
+# Direct backend health (if port 8080 is exposed)
+curl http://localhost:8080/api/v1/health
 ```
 
 ### Logging
 
-1. **View logs (Docker)**
+1. **View logs (Podman)**
 
 ```bash
-podman compose logs -f backend
-podman compose logs -f frontend
+podman compose -f container-compose.yml logs -f backend
+podman compose -f container-compose.yml logs -f frontend
 ```
 
 1. **View logs (systemd)**
@@ -399,15 +428,15 @@ tail -f /var/log/goblin/dns.log | grep "Resolved"
 1. **Monitor API requests**
 
 ```bash
-# API request statistics
-curl http://localhost:8080/api/v1/stats/summary | jq
+# API request statistics (via frontend proxy)
+curl http://localhost:3000/api/v1/stats/summary | jq
 ```
 
 1. **Resource usage**
 
 ```bash
-# Docker stats
-docker stats goblin-backend goblin-frontend
+# Podman stats
+podman stats goblin-backend goblin-frontend
 
 # System resources
 htop
