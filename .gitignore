@@ -34,7 +34,7 @@ Thumbs.db
 
 # Docker
 .dockerignore
+*.local.yml
 
 # Test outputs
 /backend/test_results/
-/tmp/
