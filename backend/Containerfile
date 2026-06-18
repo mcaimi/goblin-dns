@@ -1,0 +1,54 @@
+# Build stage
+FROM rust:1.95 as builder
+
+WORKDIR /app
+
+# Copy manifests
+COPY Cargo.toml ./
+
+# Copy source code
+COPY src ./src
+COPY migrations ./migrations
+
+# Build application
+RUN cargo build --release
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+  ca-certificates \
+  sqlite3 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/goblin /usr/local/bin/goblin
+
+# Copy migrations
+COPY migrations ./migrations
+
+# Create data directory
+RUN mkdir -p /data
+
+# Expose ports
+EXPOSE 53/udp
+EXPOSE 53/tcp
+EXPOSE 8080/tcp
+
+# Set environment variables
+ENV DATABASE_PATH=/data/goblin.db
+ENV DNS_BIND_ADDRESS=0.0.0.0:53
+ENV API_BIND_ADDRESS=0.0.0.0:8080
+ENV LOG_LEVEL=info
+
+# initialize the db for first runtime
+RUN if [ ! -f ${DATABASE_PATH} ]; then \
+  sqlite3 ${DATABASE_PATH} < migrations/001_initial.sql; \
+  fi
+
+# Run the application
+CMD ["goblin"]
