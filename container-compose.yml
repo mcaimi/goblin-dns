@@ -1,0 +1,62 @@
+---
+version: '3.8'
+
+services:
+  # GOBLIN Backend (DNS Server + REST API)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    container_name: goblin-backend
+    ports:
+      - "53:53/udp"      # DNS UDP
+      - "53:53/tcp"      # DNS TCP
+      - "8080:8080"      # REST API
+    volumes:
+      - goblin-data:/data
+    environment:
+      - DATABASE_PATH=/data/goblin.db
+      - DNS_BIND_ADDRESS=0.0.0.0:53
+      - API_BIND_ADDRESS=0.0.0.0:8080
+      - API_CORS_ENABLED=true
+      - LOG_LEVEL=info
+      - DEFAULT_UPSTREAM=8.8.8.8:53
+      - RULES_CACHE_TTL=60
+    restart: unless-stopped
+    networks:
+      - goblin-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # GOBLIN Frontend (React Web UI)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Containerfile
+    container_name: goblin-frontend
+    ports:
+      - "3000:80"        # Web UI
+    environment:
+      - VITE_API_URL=http://localhost:8080/api/v1
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - goblin-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  goblin-data:
+    driver: local
+
+networks:
+  goblin-network:
+    driver: bridge
