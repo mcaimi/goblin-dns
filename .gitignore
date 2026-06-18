@@ -1,0 +1,40 @@
+# Rust
+/backend/target/
+/backend/Cargo.lock
+/backend/*.db
+/backend/*.db-shm
+/backend/*.db-wal
+
+# Node
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.env.local
+/frontend/.env.production
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+/backend/*.log
+/frontend/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+.dockerignore
+
+# Test outputs
+/backend/test_results/
+/tmp/
