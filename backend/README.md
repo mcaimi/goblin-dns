@@ -60,7 +60,8 @@ backend/
     │   ├── mod.rs        # Module re-exports
     │   ├── server.rs     # Hickory DNS server (UDP + TCP) wrapper
     │   ├── handler.rs    # DNS request handler implementing RequestHandler trait
-    │   └── resolver.rs   # Upstream DNS resolution wrapper
+    │   ├── resolver.rs   # Multi-resolver with domain-based routing
+    │   └── cache.rs      # In-memory resolver cache with periodic refresh
     ├── rules/
     │   ├── mod.rs        # Module re-exports
     │   ├── cache.rs      # In-memory rule cache with periodic refresh
@@ -207,21 +208,45 @@ struct DnsServer {
 
 `run()` registers UDP and optionally TCP sockets, then blocks.
 
-**`resolver.rs`** — Wrapper around Hickory's `TokioAsyncResolver`:
+**`resolver.rs`** — Multi-resolver system with domain-based routing:
 
 ```rust
+struct DomainResolver {
+    resolver: TokioAsyncResolver,  // Hickory async resolver
+    domain: String,                // Associated domain or "core"
+    ip_address: String,            // Upstream DNS server address
+}
+
 struct DnsResolver {
-    resolver: TokioAsyncResolver,  // Hickory async resolver configured with custom upstream
+    domain_resolvers: HashMap<String, DomainResolver>,  // Domain-specific resolvers
+    core_resolvers: Vec<DomainResolver>,                // Fallback resolvers
 }
 ```
 
-`new(upstream_addr)` configures a custom resolver using a single upstream (e.g., `8.8.8.8:53`). Provides `resolve_a(domain)` and `resolve_aaaa(domain)` convenience methods.
+`from_upstreams(upstreams)` creates a resolver instance from a list of `UpstreamResolver` records, automatically separating domain-specific resolvers from core resolvers. `select_resolver(domain)` implements the tier-2/tier-3 logic: exact domain match → subdomain match → first core resolver. Provides `resolve(domain, record_type)`, `resolve_a(domain)`, and `resolve_aaaa(domain)` methods.
+
+**`cache.rs`** — In-memory resolver cache with periodic refresh:
+
+```rust
+struct ResolverCache {
+    db: Arc<Database>,
+    resolver: Arc<RwLock<Option<Arc<DnsResolver>>>>,
+    refresh_interval: Duration,
+}
+
+struct ResolverCacheHandle {
+    cache: Arc<ResolverCache>,
+}
+```
+
+Similar to `RuleCache`, this periodically refreshes the upstream resolver configuration from the database and rebuilds the `DnsResolver` instance. The handler uses `ResolverCacheHandle` to get the current resolver configuration.
 
 **`handler.rs`** — Core request handler implementing `hickory_server::server::RequestHandler`:
 
 ```rust
 struct DnsHandler {
-    resolver: Arc<DnsResolver>,
+    resolver_cache: Option<ResolverCacheHandle>,
+    fallback_resolver: Option<Arc<DnsResolver>>,
     rule_cache: Option<RuleCacheHandle>,
     stats_handle: Option<StatsHandle>,
 }
@@ -230,12 +255,23 @@ struct DnsHandler {
 Uses a **builder pattern** for chaining:
 
 ```rust
+// Using resolver cache (recommended)
+DnsHandler::with_resolver_cache(resolver_cache_handle)
+    .with_rules(rule_cache_handle)
+    .with_stats(stats_handle)
+
+// Using static resolver (legacy/fallback)
 DnsHandler::new(resolver)
     .with_rules(rule_cache_handle)
     .with_stats(stats_handle)
 ```
 
-The `handle_query()` method checks `rule_cache` first — if a rule matches, it returns the `target_ip`; otherwise it delegates to `resolver`. All returned records use a hardcoded TTL of 300 seconds.
+The `handle_query()` method implements the three-tier resolution flow:
+1. **TIER 1**: Check `rule_cache` first — if a rule matches, return the `target_ip`
+2. **TIER 2**: If no rule matches, get resolver from cache and let it select domain-specific resolver
+3. **TIER 3**: Resolver automatically falls back to core resolvers if no domain match
+
+All returned records use a hardcoded TTL of 300 seconds.
 
 ### Rule Engine (`rules/`)
 
@@ -321,7 +357,26 @@ A generic `ApiResponse<T>` wrapper provides consistent JSON responses: `{"succes
 
 ## DNS Query Processing Flow
 
-The complete lifecycle of a DNS query through the system:
+The system implements a **three-tier DNS resolution flow** with clear priority ordering:
+
+### Resolution Tiers
+
+**Tier 1: Priority Rules** (Highest Priority)
+- Domain-specific overrides with optional client IP/CIDR filtering
+- Returns a configured `target_ip` instead of performing actual DNS resolution
+- Used for blocking, redirecting, or A/B testing
+
+**Tier 2: Domain-Specific Upstream Resolvers**
+- Upstream DNS servers associated with specific domains or domain patterns
+- Queries for matched domains are resolved using the associated upstream resolver
+- Supports subdomain matching (e.g., `api.example.com` matches resolver for `example.com`)
+
+**Tier 3: Core Upstream Resolvers** (Fallback)
+- General-purpose upstream DNS servers marked with domain `"core"`
+- Handle all queries that don't match priority rules or domain-specific resolvers
+- Ensures all queries can be resolved even without specific configuration
+
+### Flow Diagram
 
 ```mermaid
 graph TB
@@ -330,44 +385,149 @@ graph TB
     subgraph "dns/handler.rs"
         S --> H[DnsHandler::handle_request]
         H --> Parse[Parse: domain, record type, client IP]
-        Parse -->|"Only A/AAAA"| MatchRule{Match Rule?}
+        Parse -->|"Only A/AAAA"| Tier1{TIER 1: Priority Rule?}
         Parse -->|"Other type"| NotImp[NotImp Response]
     end
 
-    subgraph "rules/"
-        MatchRule -->|"Yes"| Fetch[RuleCache::get_rules]
-        Fetch --> Sort[Specificity Sort]
-        Sort --> Best[Best Matching Rule]
-        Best --> MatchRule
+    subgraph "TIER 1: Priority Rules (rules/)"
+        Tier1 -->|"Check"| Fetch[RuleCache::get_rules]
+        Fetch --> Match[Domain + Client Match]
+        Match --> Sort[Specificity Sort]
+        Sort --> Best{Rule Found?}
     end
 
     subgraph "Override Path"
-        MatchRule -->|"Rule matched"| Build[Build Record from target_ip]
-        Build -->|"Resolve original for stats"| UR[Upstream Resolver lookup]
-        UR -->|"Optional"| Stats[StatsHandle::try_record]
+        Best -->|"Yes"| Build[Build Record from target_ip]
+        Build -->|"Resolve original for stats"| OrigLookup[Optional Original IP Lookup]
+        OrigLookup --> Stats[StatsHandle::try_record]
         Stats -->|"mpsc channel"| SC[StatsCollector::run]
+        Build --> Response[Build DNS Response]
     end
 
-    subgraph "Normal Path"
-        MatchRule -->|"No match"| Default[Upstream Resolver::resolve]
-        Default -->|"A/AAAA lookup"| Resp[Build A/AAAA Record]
+    subgraph "TIER 2 & 3: Upstream Resolution (dns/resolver.rs)"
+        Best -->|"No"| SelectResolver{Select Resolver}
+        SelectResolver -->|"Domain match?"| Tier2[TIER 2: Domain-Specific Resolver]
+        SelectResolver -->|"No match"| Tier3[TIER 3: Core Resolver]
+        Tier2 --> ResolveUpstream[Resolve via Selected Upstream]
+        Tier3 --> ResolveUpstream
+        ResolveUpstream -->|"A/AAAA lookup"| Response
     end
 
-    Build -->|"A/AAAA, TTL=300"| Resp[Build DNS Response]
-    Resp -->|"NoError / NXDomain / ServFail"| C
+    Response -->|"NoError / NXDomain / ServFail"| C
 ```
 
-Step-by-step:
+### Resolution Algorithm
+
+```
+function resolve_query(domain, client_ip, record_type):
+    # TIER 1: Check priority rules
+    for rule in active_priority_rules:
+        if rule.domain matches domain AND
+           rule.client_filter matches client_ip:
+            
+            # Optional: Resolve original IP for statistics
+            original_ip = upstream_resolve(domain, record_type)
+            
+            # Record statistics
+            record_stat(rule, client_ip, domain, original_ip, rule.target_ip)
+            
+            # Return overridden IP
+            return dns_record(rule.target_ip, TTL=300)
+    
+    # TIER 2: Check domain-specific upstream resolvers
+    for resolver in domain_specific_resolvers:
+        if resolver.domain == domain OR
+           domain is subdomain of resolver.domain:
+            return resolver.resolve(domain, record_type)
+    
+    # TIER 3: Use core upstream resolver (fallback)
+    for resolver in core_resolvers:
+        return resolver.resolve(domain, record_type)
+    
+    # No resolver available
+    return ServFail
+```
+
+### Step-by-Step Processing
 
 1. **Packet arrival**: Client sends DNS query to bind address over UDP or TCP
 2. **Server setup**: `DnsServer` registers socket with `ServerFuture::new(handler)`
 3. **Handler dispatch**: `DnsHandler::handle_request()` is called by Hickory's server loop
 4. **Query parsing**: Extract domain, record type, and client IP from the request
 5. **Type check**: Only `A` and `AAAA` queries are handled; others receive `NotImp`
-6. **Rule lookup**: Fetch rules from cache, filter by `active` + domain match + client match, sort by specificity
-7. **Override path** (if rule matches): Parse `target_ip`, optionally resolve original IP for stats, send `StatEvent` via channel, return record
-8. **Normal path** (if no match): Forward to `DnsResolver` which queries the upstream DNS
+
+6. **TIER 1 - Priority Rule Lookup**:
+   - Fetch active rules from `RuleCache`
+   - Filter by domain match (case-insensitive, exact match)
+   - Filter by client IP match (exact IP, CIDR, or NULL for all clients)
+   - Sort by specificity: exact IP > CIDR (longer prefix) > no filter
+   - If rule found: return `target_ip`, optionally record stats
+   
+7. **TIER 2 - Domain-Specific Resolver**:
+   - Check if domain matches any configured domain-specific resolver
+   - Match exact domain or subdomain (e.g., `api.example.com` → `example.com`)
+   - If matched: use associated upstream resolver to perform DNS query
+   
+8. **TIER 3 - Core Resolver Fallback**:
+   - If no priority rule or domain-specific resolver matches
+   - Use first available "core" upstream resolver
+   - Perform standard DNS query through upstream
+
 9. **Response**: `MessageResponseBuilder` constructs the DNS response with `NoError`, `NXDomain`, `ServFail`, or `NotImp`
+
+### Domain Matching Logic
+
+Domain matching is **case-insensitive** and handles DNS normalization:
+
+- Trailing dots are stripped: `example.com.` → `example.com`
+- Case normalized: `EXAMPLE.COM` → `example.com`
+- Subdomain matching: `api.example.com` matches resolver for `example.com`
+- Exact match takes precedence over subdomain match
+
+### Upstream Resolver Configuration
+
+Upstream resolvers are stored in the `upstream_resolvers` table with a `domain` field:
+
+- **Domain-specific**: `domain = "example.com"` → handles `example.com` and `*.example.com`
+- **Core/Fallback**: `domain = "core"` → handles all unmatched queries
+
+Example configuration:
+
+```sql
+-- Core resolver (fallback for all queries)
+INSERT INTO upstream_resolvers (ip_address, domain, created_at, updated_at)
+VALUES ('8.8.8.8:53', 'core', unixepoch(), unixepoch());
+
+-- Domain-specific resolver for company internal domains
+INSERT INTO upstream_resolvers (ip_address, domain, created_at, updated_at)
+VALUES ('10.0.0.53:53', 'company.internal', unixepoch(), unixepoch());
+
+-- Domain-specific resolver for example.com
+INSERT INTO upstream_resolvers (ip_address, domain, created_at, updated_at)
+VALUES ('1.1.1.1:53', 'example.com', unixepoch(), unixepoch());
+```
+
+### Resolution Flow Examples
+
+**Example 1**: Query for `google.com` from `192.168.1.100`
+- TIER 1: No priority rule matches → continue
+- TIER 2: No domain-specific resolver for `google.com` → continue
+- TIER 3: Use core resolver `8.8.8.8:53` → resolve normally
+
+**Example 2**: Query for `blocked.com` from `192.168.1.100` (with priority rule)
+- TIER 1: Priority rule matches (`blocked.com` → `0.0.0.0`) → return `0.0.0.0`
+- TIER 2: Not reached
+- TIER 3: Not reached
+
+**Example 3**: Query for `api.company.internal` from `10.0.0.50`
+- TIER 1: No priority rule matches → continue
+- TIER 2: Domain-specific resolver matches `company.internal` → use `10.0.0.53:53`
+- TIER 3: Not reached
+
+**Example 4**: Query for `www.example.com` from `192.168.2.100`
+- TIER 1: No priority rule matches → continue
+- TIER 2: Domain-specific resolver matches `example.com` (subdomain) → use `1.1.1.1:53`
+- TIER 3: Not reached
 
 ## Application Bootstrap
 
@@ -396,11 +556,14 @@ sequenceDiagram
 
     M->>RC: RuleCache::new(db, ttl)
     Note over RC: Uses RwLock<Vec<PriorityRule>>
-    M->>M: tokio::spawn(cache.run_refresh_loop())
+    M->>M: tokio::spawn(rule_cache.run_refresh_loop())
 
-    M->>R: DnsResolver::new(upstream)
-    M->>H: DnsHandler::new(resolver)
-    H->>H: .with_rules(cache_handle)
+    M->>R: ResolverCache::new(db, ttl)
+    Note over R: Uses RwLock<Option<DnsResolver>>
+    M->>M: tokio::spawn(resolver_cache.run_refresh_loop())
+
+    M->>H: DnsHandler::with_resolver_cache(resolver_cache_handle)
+    H->>H: .with_rules(rule_cache_handle)
     H->>H: .with_stats(stats_handle)
 
     M->>A: create_router(db, cors)
@@ -422,12 +585,13 @@ Bootstrap order:
 3. Connect SQLite, enable WAL mode, run migrations
 4. Create `StatsCollector` (returns collector + `StatsHandle`), spawn as task
 5. Create `RuleCache` with refresh interval, spawn refresh loop task
-6. Create `DnsResolver` with upstream config
-7. Build `DnsHandler` via builder pattern, chaining in rules and stats
-8. Create Axum router with all routes + optional CORS
-9. Spawn HTTP server on `api_bind_address`
-10. Set up Ctrl-C and SIGTERM handlers that call `cancel()` on the shared token
-11. Run `DnsServer::run()` (blocking), selected against shutdown signal
+6. Create `ResolverCache` with refresh interval, spawn refresh loop task
+7. Create fallback `DnsResolver` with default upstream config (used if no upstreams configured)
+8. Build `DnsHandler` via builder pattern, using resolver cache and chaining in rules and stats
+9. Create Axum router with all routes + optional CORS
+10. Spawn HTTP server on `api_bind_address`
+11. Set up Ctrl-C and SIGTERM handlers that call `cancel()` on the shared token
+12. Run `DnsServer::run()` (blocking), selected against shutdown signal
 
 ## Database Schema
 
