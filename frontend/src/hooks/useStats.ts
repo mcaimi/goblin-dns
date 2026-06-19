@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { statsApi } from '../api/client';
 
-export const useStats = (limit = 100, offset = 0) => {
+export const useStats = (limit = 100, offset = 0, refetchInterval: number | false = false) => {
   return useQuery({
     queryKey: ['stats', limit, offset],
     queryFn: () => statsApi.getAll(limit, offset),
+    refetchInterval,
   });
 };
 

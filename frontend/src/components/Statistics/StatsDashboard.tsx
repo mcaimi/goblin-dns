@@ -1,18 +1,24 @@
+import { useState } from 'react';
 import { useStatsSummary, useStats } from '../../hooks/useStats';
 import { useResolvers } from '../../hooks/useResolvers';
 
 export default function StatsDashboard() {
-  const { data: summary, isLoading: summaryLoading } = useStatsSummary();
-  const { data: stats, isLoading: statsLoading } = useStats(20, 0);
-  const { data: resolvers } = useResolvers();
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5);
 
-  if (summaryLoading) return <div className="loading">Loading statistics...</div>;
+  const { data: summary, isLoading: summaryLoading } = useStatsSummary();
+  const { data: stats, isLoading: statsLoading } = useStats(20, 0, autoRefresh ? refreshInterval * 1000 : false);
+  const { data: resolvers } = useResolvers();
 
   const summaryData = summary?.data;
   const recentStats = stats?.data || [];
 
   return (
     <div>
+    { summaryLoading ? 
+    (
+      <div className="loading">Loading statistics...</div>
+    ) : (
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-label">Total Hits</div>
@@ -33,11 +39,43 @@ export default function StatsDashboard() {
           <div className="stat-label">Total Resolvers</div>
           <div className="stat-value">{resolvers?.data?.length || 0}</div>
         </div>
-      </div>
+      </div> 
+    )
+    }
 
       <div className="card">
         <div className="card-header">
           <h3 className="card-title">Recent Activity</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Auto-refresh</span>
+            </label>
+            {autoRefresh && (
+              <select
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  backgroundColor: 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value={3}>Every 3s</option>
+                <option value={5}>Every 5s</option>
+                <option value={10}>Every 10s</option>
+                <option value={30}>Every 30s</option>
+                <option value={60}>Every 1m</option>
+              </select>
+            )}
+          </div>
         </div>
         {statsLoading ? (
           <div className="loading">Loading recent activity...</div>
