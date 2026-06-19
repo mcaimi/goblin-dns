@@ -7,7 +7,7 @@ mod api;
 
 use config::Config;
 use db::Database;
-use dns::{DnsResolver, DnsServer, DnsHandler};
+use dns::{DnsResolver, DnsServer, DnsHandler, ResolverCache, ResolverCacheHandle};
 use rules::{RuleCache, RuleCacheHandle};
 use stats::{StatsCollector, StatsHandle};
 use api::create_router;
@@ -79,12 +79,28 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Initialize DNS resolver
-    let resolver = Arc::new(DnsResolver::new(&config.default_upstream).await?);
-    info!("DNS resolver initialized");
+    // Initialize resolver cache
+    let resolver_cache = Arc::new(ResolverCache::new(database.clone(), config.rules_cache_ttl));
+    let resolver_cache_handle = ResolverCacheHandle::new(resolver_cache.clone());
+    info!("Resolver cache initialized (TTL: {}s)", config.rules_cache_ttl);
 
-    // Create DNS handler with rule cache and stats
-    let handler = DnsHandler::new(resolver.clone())
+    // Spawn resolver cache refresh loop
+    let resolver_shutdown = shutdown_token.clone();
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = resolver_cache.run_refresh_loop() => {},
+            _ = resolver_shutdown.cancelled() => {
+                info!("Resolver cache refresh loop shutting down");
+            }
+        }
+    });
+
+    // Create fallback DNS resolver (in case no upstream resolvers are configured)
+    let fallback_resolver = Arc::new(DnsResolver::new(&config.default_upstream).await?);
+    info!("Fallback DNS resolver initialized: {}", config.default_upstream);
+
+    // Create DNS handler with resolver cache, rules, and stats
+    let handler = DnsHandler::with_resolver_cache(resolver_cache_handle)
         .with_rules(rule_cache_handle)
         .with_stats(stats_handle);
 

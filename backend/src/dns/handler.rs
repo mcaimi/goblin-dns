@@ -8,19 +8,33 @@ use std::str::FromStr;
 use tracing::{debug, error, info, warn};
 
 use super::resolver::DnsResolver;
+use super::cache::ResolverCacheHandle;
 use crate::rules::{find_matching_rule, RuleCacheHandle};
 use crate::stats::{StatEvent, StatsHandle};
 
 pub struct DnsHandler {
-    resolver: Arc<DnsResolver>,
+    resolver_cache: Option<ResolverCacheHandle>,
+    fallback_resolver: Option<Arc<DnsResolver>>,
     rule_cache: Option<RuleCacheHandle>,
     stats_handle: Option<StatsHandle>,
 }
 
 impl DnsHandler {
+    /// Create a new DNS handler with a fallback resolver
     pub fn new(resolver: Arc<DnsResolver>) -> Self {
         Self {
-            resolver,
+            resolver_cache: None,
+            fallback_resolver: Some(resolver),
+            rule_cache: None,
+            stats_handle: None,
+        }
+    }
+
+    /// Create a DNS handler that uses the resolver cache
+    pub fn with_resolver_cache(resolver_cache: ResolverCacheHandle) -> Self {
+        Self {
+            resolver_cache: Some(resolver_cache),
+            fallback_resolver: None,
             rule_cache: None,
             stats_handle: None,
         }
@@ -34,6 +48,15 @@ impl DnsHandler {
     pub fn with_stats(mut self, stats_handle: StatsHandle) -> Self {
         self.stats_handle = Some(stats_handle);
         self
+    }
+
+    /// Get the active resolver (from cache or fallback)
+    async fn get_resolver(&self) -> Option<Arc<DnsResolver>> {
+        if let Some(ref cache) = self.resolver_cache {
+            cache.get_resolver().await
+        } else {
+            self.fallback_resolver.clone()
+        }
     }
 
     async fn handle_query(&self, request: &Request) -> Result<Vec<Record>, ResponseCode> {
@@ -58,7 +81,7 @@ impl DnsHandler {
             return Err(ResponseCode::NotImp);
         }
 
-        // Check for priority rule match first
+        // TIER 1: Check for priority rule match first
         if let Some(ref rule_cache) = self.rule_cache {
             let rules = rule_cache.get_rules().await;
 
@@ -71,9 +94,14 @@ impl DnsHandler {
                 // Parse the target IP from the rule
                 if let Ok(target_ip) = IpAddr::from_str(&matched_rule.target_ip) {
                     // Get the original IP for statistics (if available)
-                    let original_ip = match self.resolver.resolve(&domain, record_type).await {
-                        Ok(ips) if !ips.is_empty() => Some(ips[0].to_string()),
-                        _ => None,
+                    let resolver = self.get_resolver().await;
+                    let original_ip = if let Some(ref resolver) = resolver {
+                        match resolver.resolve(&domain, record_type).await {
+                            Ok(ips) if !ips.is_empty() => Some(ips[0].to_string()),
+                            _ => None,
+                        }
+                    } else {
+                        None
                     };
 
                     // Record statistics
@@ -105,8 +133,17 @@ impl DnsHandler {
             }
         }
 
-        // No rule matched - perform normal DNS resolution
-        match self.resolver.resolve(&domain, record_type).await {
+        // TIER 2 & 3: No priority rule matched - perform normal DNS resolution
+        // The resolver will automatically select:
+        // - TIER 2: Domain-specific resolver if one matches
+        // - TIER 3: Core resolver as fallback
+        let resolver = self.get_resolver().await
+            .ok_or_else(|| {
+                error!("No DNS resolver available");
+                ResponseCode::ServFail
+            })?;
+
+        match resolver.resolve(&domain, record_type).await {
             Ok(ips) => {
                 if ips.is_empty() {
                     warn!("No results found for {}", domain);
