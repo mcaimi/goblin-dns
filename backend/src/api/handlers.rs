@@ -323,3 +323,9 @@ pub async fn get_stats_summary(
 pub async fn health_check() -> StatusCode {
     StatusCode::OK
 }
+
+// ========== Documentation Handler ==========
+
+pub async fn api_docs() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("docs.html"))
+}

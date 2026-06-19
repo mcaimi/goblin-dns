@@ -36,6 +36,9 @@ The DNS server listens on `0.0.0.0:53` (UDP/TCP). The REST API listens on `0.0.0
 # Test with dig
 dig @127.0.0.1 example.com
 curl http://localhost:8080/api/v1/health
+
+# View complete API documentation in browser
+open http://localhost:8080/api/v1/docs
 ```
 
 ## Project Structure
@@ -298,11 +301,12 @@ struct StatsHandle {
 
 ### REST API (`api/`)
 
-**`routes.rs`** — Sets up the Axum router with all 15 endpoints under `/api/v1`:
+**`routes.rs`** — Sets up the Axum router with all endpoints under `/api/v1`:
 
 | Method | Path | Handler |
 |---|---|---|
 | GET | `/api/v1/health` | Health check |
+| GET | `/api/v1/docs` | Complete API documentation (HTML) |
 | GET/POST/GET/PUT/DELETE | `/api/v1/resolvers` | Upstream resolver CRUD |
 | GET/POST/GET/PUT/PATCH/DELETE | `/api/v1/rules` | Priority rule CRUD + toggle |
 | GET | `/api/v1/stats` | Paginated statistics |
@@ -310,6 +314,8 @@ struct StatsHandle {
 | GET | `/api/v1/stats/summary` | Aggregated summary |
 
 A generic `ApiResponse<T>` wrapper provides consistent JSON responses: `{"success": bool, "data": T?, "error": String?}`. CORS is configurable via `API_CORS_ENABLED`.
+
+**API Documentation** — Visit `http://localhost:8080/api/v1/docs` in your browser for interactive HTML documentation with detailed endpoint descriptions, request/response examples, and a quick start guide.
 
 **`models.rs`** defines request/response DTOs including `CreateRuleRequest`, `UpdateRuleRequest` (with `Option<Option<T>>` for optional fields), `StatsQuery`, and `StatsSummaryResponse`.
 
