@@ -15,6 +15,8 @@ pub fn create_router(db: Arc<Database>, enable_cors: bool) -> Router {
     let api_routes = Router::new()
         // Health check
         .route("/health", get(health_check))
+        // Documentation
+        .route("/docs", get(api_docs))
         // Upstream resolvers
         .route("/resolvers", get(list_resolvers).post(create_resolver))
         .route(
