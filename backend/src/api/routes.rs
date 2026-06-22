@@ -6,10 +6,21 @@ use tower_http::cors::{CorsLayer, Any};
 use std::sync::Arc;
 
 use crate::db::Database;
+use crate::dns::ResolverCacheHandle;
+use crate::rules::RuleCacheHandle;
 use super::handlers::*;
 
-pub fn create_router(db: Arc<Database>, enable_cors: bool) -> Router {
-    let state = AppState { db };
+pub fn create_router(
+    db: Arc<Database>,
+    rule_cache: RuleCacheHandle,
+    resolver_cache: ResolverCacheHandle,
+    enable_cors: bool,
+) -> Router {
+    let state = AppState {
+        db,
+        rule_cache,
+        resolver_cache,
+    };
 
     // Create API routes
     let api_routes = Router::new()

@@ -4,9 +4,11 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::db::Database;
+use crate::dns::ResolverCacheHandle;
+use crate::rules::RuleCacheHandle;
 use super::models::*;
 
 // ========== Application State ==========
@@ -14,6 +16,8 @@ use super::models::*;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
+    pub rule_cache: RuleCacheHandle,
+    pub resolver_cache: ResolverCacheHandle,
 }
 
 // ========== Upstream Resolver Handlers ==========
@@ -64,6 +68,12 @@ pub async fn create_resolver(
     {
         Ok(id) => {
             info!("Created resolver {} - {} -> {}", id, payload.domain, payload.ip_address);
+
+            // Immediately invalidate cache to propagate changes
+            if let Err(e) = state.resolver_cache.refresh().await {
+                warn!("Failed to refresh resolver cache after creation: {}", e);
+            }
+
             Ok((
                 StatusCode::CREATED,
                 Json(ApiResponse::success(CreateResponse { id })),
@@ -94,6 +104,12 @@ pub async fn update_resolver(
     {
         Ok(true) => {
             info!("Updated resolver {}", id);
+
+            // Immediately invalidate cache to propagate changes
+            if let Err(e) = state.resolver_cache.refresh().await {
+                warn!("Failed to refresh resolver cache after update: {}", e);
+            }
+
             Ok(Json(ApiResponse::success(UpdateResponse { updated: true })))
         }
         Ok(false) => Err(StatusCode::NOT_FOUND),
@@ -113,6 +129,12 @@ pub async fn delete_resolver(
     match state.db.delete_resolver(id).await {
         Ok(true) => {
             info!("Deleted resolver {}", id);
+
+            // Immediately invalidate cache to propagate changes
+            if let Err(e) = state.resolver_cache.refresh().await {
+                warn!("Failed to refresh resolver cache after deletion: {}", e);
+            }
+
             Ok(Json(ApiResponse::success(DeleteResponse { deleted: true })))
         }
         Ok(false) => Err(StatusCode::NOT_FOUND),
@@ -179,6 +201,12 @@ pub async fn create_rule(
                 "Created rule {} - {} -> {} (filter: {:?}, active: {})",
                 id, payload.domain, payload.target_ip, payload.client_filter, payload.active
             );
+
+            // Immediately invalidate cache to propagate changes
+            if let Err(e) = state.rule_cache.refresh().await {
+                warn!("Failed to refresh rule cache after creation: {}", e);
+            }
+
             Ok((
                 StatusCode::CREATED,
                 Json(ApiResponse::success(CreateResponse { id })),
@@ -211,6 +239,12 @@ pub async fn update_rule(
     {
         Ok(true) => {
             info!("Updated rule {}", id);
+
+            // Immediately invalidate cache to propagate changes
+            if let Err(e) = state.rule_cache.refresh().await {
+                warn!("Failed to refresh rule cache after update: {}", e);
+            }
+
             Ok(Json(ApiResponse::success(UpdateResponse { updated: true })))
         }
         Ok(false) => Err(StatusCode::NOT_FOUND),
@@ -230,6 +264,12 @@ pub async fn toggle_rule(
     match state.db.toggle_rule(id).await {
         Ok(true) => {
             info!("Toggled rule {}", id);
+
+            // Immediately invalidate cache to propagate changes
+            if let Err(e) = state.rule_cache.refresh().await {
+                warn!("Failed to refresh rule cache after toggle: {}", e);
+            }
+
             Ok(Json(ApiResponse::success(UpdateResponse { updated: true })))
         }
         Ok(false) => Err(StatusCode::NOT_FOUND),
@@ -249,6 +289,12 @@ pub async fn delete_rule(
     match state.db.delete_rule(id).await {
         Ok(true) => {
             info!("Deleted rule {}", id);
+
+            // Immediately invalidate cache to propagate changes
+            if let Err(e) = state.rule_cache.refresh().await {
+                warn!("Failed to refresh rule cache after deletion: {}", e);
+            }
+
             Ok(Json(ApiResponse::success(DeleteResponse { deleted: true })))
         }
         Ok(false) => Err(StatusCode::NOT_FOUND),
