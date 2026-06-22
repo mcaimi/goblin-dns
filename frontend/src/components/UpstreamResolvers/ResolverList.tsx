@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { useResolvers, useCreateResolver, useDeleteResolver } from '../../hooks/useResolvers';
-import type { CreateResolverRequest } from '../../types';
+import { useResolvers, useCreateResolver, useUpdateResolver, useDeleteResolver } from '../../hooks/useResolvers';
+import type { CreateResolverRequest, UpdateResolverRequest } from '../../types';
 
 export default function ResolverList() {
   const { data, isLoading, error } = useResolvers();
   const createMutation = useCreateResolver();
+  const updateMutation = useUpdateResolver();
   const deleteMutation = useDeleteResolver();
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<CreateResolverRequest>({
     ip_address: '',
     domain: '',
@@ -15,7 +17,31 @@ export default function ResolverList() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createMutation.mutateAsync(formData);
+    if (editingId !== null) {
+      const updateData: UpdateResolverRequest = {
+        ip_address: formData.ip_address,
+        domain: formData.domain,
+      };
+      await updateMutation.mutateAsync({ id: editingId, data: updateData });
+      setEditingId(null);
+    } else {
+      await createMutation.mutateAsync(formData);
+    }
+    setFormData({ ip_address: '', domain: '' });
+    setShowForm(false);
+  };
+
+  const handleEdit = (resolver: any) => {
+    setEditingId(resolver.id);
+    setFormData({
+      ip_address: resolver.ip_address,
+      domain: resolver.domain,
+    });
+    setShowForm(true);
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
     setFormData({ ip_address: '', domain: '' });
     setShowForm(false);
   };
@@ -56,10 +82,12 @@ export default function ResolverList() {
                 required
               />
             </div>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create Resolver'}
+            <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+              {editingId !== null
+                ? (updateMutation.isPending ? 'Updating...' : 'Update Resolver')
+                : (createMutation.isPending ? 'Creating...' : 'Create Resolver')}
             </button>
-            <button type="button" className="btn-secondary" onClick={() => setShowForm(false)} style={{ marginLeft: '10px' }}>
+            <button type="button" className="btn-secondary" onClick={handleCancel} style={{ marginLeft: '10px' }}>
               Cancel
             </button>
           </form>
@@ -90,6 +118,9 @@ export default function ResolverList() {
                 <td>{resolver.ip_address}</td>
                 <td>{resolver.domain}</td>
                 <td>
+                  <button className="btn-secondary" onClick={() => handleEdit(resolver)} style={{ marginRight: '5px' }}>
+                    Update
+                  </button>
                   <button className="btn-danger" onClick={() => handleDelete(resolver.id)}>
                     Delete
                   </button>

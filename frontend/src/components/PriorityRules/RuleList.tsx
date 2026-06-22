@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { useRules, useCreateRule, useDeleteRule, useToggleRule } from '../../hooks/useRules';
-import type { CreateRuleRequest } from '../../types';
+import { useRules, useCreateRule, useUpdateRule, useDeleteRule, useToggleRule } from '../../hooks/useRules';
+import type { CreateRuleRequest, UpdateRuleRequest } from '../../types';
 
 export default function RuleList() {
   const { data, isLoading, error } = useRules();
   const createMutation = useCreateRule();
+  const updateMutation = useUpdateRule();
   const deleteMutation = useDeleteRule();
   const toggleMutation = useToggleRule();
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<CreateRuleRequest>({
     domain: '',
     client_filter: '',
@@ -22,7 +24,36 @@ export default function RuleList() {
       ...formData,
       client_filter: formData.client_filter || null,
     };
-    await createMutation.mutateAsync(data);
+
+    if (editingId !== null) {
+      const updateData: UpdateRuleRequest = {
+        domain: data.domain,
+        client_filter: data.client_filter,
+        target_ip: data.target_ip,
+        active: data.active,
+      };
+      await updateMutation.mutateAsync({ id: editingId, data: updateData });
+      setEditingId(null);
+    } else {
+      await createMutation.mutateAsync(data);
+    }
+    setFormData({ domain: '', client_filter: '', target_ip: '', active: true });
+    setShowForm(false);
+  };
+
+  const handleEdit = (rule: any) => {
+    setEditingId(rule.id);
+    setFormData({
+      domain: rule.domain,
+      client_filter: rule.client_filter || '',
+      target_ip: rule.target_ip,
+      active: rule.active,
+    });
+    setShowForm(true);
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
     setFormData({ domain: '', client_filter: '', target_ip: '', active: true });
     setShowForm(false);
   };
@@ -84,10 +115,12 @@ export default function RuleList() {
               />
               <label>Active</label>
             </div>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create Rule'}
+            <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+              {editingId !== null
+                ? (updateMutation.isPending ? 'Updating...' : 'Update Rule')
+                : (createMutation.isPending ? 'Creating...' : 'Create Rule')}
             </button>
-            <button type="button" className="btn-secondary" onClick={() => setShowForm(false)} style={{ marginLeft: '10px' }}>
+            <button type="button" className="btn-secondary" onClick={handleCancel} style={{ marginLeft: '10px' }}>
               Cancel
             </button>
           </form>
@@ -126,10 +159,13 @@ export default function RuleList() {
                   </span>
                 </td>
                 <td>
-                  <button className="btn-secondary" onClick={() => handleToggle(rule.id)}>
+                  <button className="btn-secondary" onClick={() => handleEdit(rule)} style={{ marginRight: '5px' }}>
+                    Update
+                  </button>
+                  <button className="btn-secondary" onClick={() => handleToggle(rule.id)} style={{ marginRight: '5px' }}>
                     {rule.active ? 'Deactivate' : 'Activate'}
                   </button>
-                  <button className="btn-danger" onClick={() => handleDelete(rule.id)} style={{ marginLeft: '5px' }}>
+                  <button className="btn-danger" onClick={() => handleDelete(rule.id)}>
                     Delete
                   </button>
                 </td>
