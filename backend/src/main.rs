@@ -100,12 +100,17 @@ async fn main() -> Result<()> {
     info!("Fallback DNS resolver initialized: {}", config.default_upstream);
 
     // Create DNS handler with resolver cache, rules, and stats
-    let handler = DnsHandler::with_resolver_cache(resolver_cache_handle)
-        .with_rules(rule_cache_handle)
+    let handler = DnsHandler::with_resolver_cache(resolver_cache_handle.clone())
+        .with_rules(rule_cache_handle.clone())
         .with_stats(stats_handle);
 
-    // Create API router
-    let app = create_router(database.clone(), config.api_cors_enabled);
+    // Create API router with cache handles for immediate invalidation
+    let app = create_router(
+        database.clone(),
+        rule_cache_handle,
+        resolver_cache_handle,
+        config.api_cors_enabled
+    );
     info!("API router created (CORS: {})", config.api_cors_enabled);
 
     // Spawn HTTP API server
