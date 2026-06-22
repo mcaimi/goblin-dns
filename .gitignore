@@ -11,6 +11,10 @@
 /frontend/.env.local
 /frontend/.env.production
 
+# cli
+/cli/target/
+/cli/Cargo.lock
+
 # Database
 *.db
 *.db-shm
