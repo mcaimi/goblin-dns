@@ -1,5 +1,5 @@
 use axum::{
-    routing::{delete, get, patch, post, put},
+    routing::{get, patch},
     Router,
 };
 use tower_http::cors::{CorsLayer, Any};
@@ -31,7 +31,7 @@ pub fn create_router(
         // Upstream resolvers
         .route("/resolvers", get(list_resolvers).post(create_resolver))
         .route(
-            "/resolvers/:id",
+            "/resolvers/{id}",
             get(get_resolver)
                 .put(update_resolver)
                 .delete(delete_resolver),
@@ -39,13 +39,13 @@ pub fn create_router(
         // Priority rules
         .route("/rules", get(list_rules).post(create_rule))
         .route(
-            "/rules/:id",
+            "/rules/{id}",
             get(get_rule).put(update_rule).delete(delete_rule),
         )
-        .route("/rules/:id/toggle", patch(toggle_rule))
+        .route("/rules/{id}/toggle", patch(toggle_rule))
         // Statistics
         .route("/stats", get(get_all_stats))
-        .route("/stats/rules/:rule_id", get(get_stats_for_rule))
+        .route("/stats/rules/{rule_id}", get(get_stats_for_rule))
         .route("/stats/summary", get(get_stats_summary))
         .with_state(state);
 

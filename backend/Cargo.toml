@@ -13,32 +13,33 @@ path = "src/main.rs"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1.38", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 tokio-util = "0.7"
 
 # DNS
-hickory-server = "0.24"
-hickory-resolver = "0.24"
-hickory-proto = "0.24"
+hickory-server = "0.26"
+hickory-resolver = "0.26"
+hickory-proto = "0.26"
+hickory-net = "0.26"
 
 # Web framework
-axum = "0.7"
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.7", features = ["cors", "trace"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "migrate"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Networking
-ipnetwork = "0.20"
+ipnetwork = "0.21"
 
 # Error handling
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Logging
 tracing = "0.1"

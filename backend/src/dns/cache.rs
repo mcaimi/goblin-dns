@@ -1,4 +1,4 @@
-use crate::db::{Database, UpstreamResolver};
+use crate::db::Database;
 use crate::dns::resolver::DnsResolver;
 use std::sync::Arc;
 use tokio::sync::RwLock;

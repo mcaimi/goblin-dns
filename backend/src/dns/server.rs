@@ -1,5 +1,6 @@
-use hickory_server::ServerFuture;
-use tokio::net::{UdpSocket, TcpListener};
+use hickory_server::server::Server;
+use hickory_net::udp::UdpSocket;
+use tokio::net::TcpListener;
 use std::net::SocketAddr;
 use anyhow::Result;
 use tracing::info;
@@ -24,7 +25,7 @@ impl DnsServer {
     pub async fn run(self) -> Result<()> {
         info!("Starting DNS server on {}", self.bind_address);
 
-        let mut server = ServerFuture::new(self.handler);
+        let mut server = Server::new(self.handler);
 
         // Bind UDP socket
         let udp_socket = UdpSocket::bind(self.bind_address).await?;
@@ -35,7 +36,8 @@ impl DnsServer {
         if self.tcp_enabled {
             let tcp_listener = TcpListener::bind(self.bind_address).await?;
             info!("DNS TCP server listening on {}", self.bind_address);
-            server.register_listener(tcp_listener, std::time::Duration::from_secs(30));
+            // register_listener(listener, timeout, max_connections)
+            server.register_listener(tcp_listener, std::time::Duration::from_secs(30), 10);
         }
 
         // Block forever to keep server running

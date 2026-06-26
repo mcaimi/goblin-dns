@@ -1,5 +1,5 @@
-use hickory_resolver::TokioAsyncResolver;
-use hickory_resolver::config::{ResolverConfig, ResolverOpts, NameServerConfig, Protocol};
+use hickory_resolver::TokioResolver;
+use hickory_resolver::config::{ResolverConfig, NameServerConfig, ConnectionConfig};
 use hickory_proto::rr::{Name, RecordType};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
@@ -12,7 +12,7 @@ use crate::db::models::UpstreamResolver;
 /// A DNS resolver that can be associated with a specific domain or marked as "core"
 #[derive(Clone)]
 pub struct DomainResolver {
-    pub resolver: TokioAsyncResolver,
+    pub resolver: TokioResolver,
     pub domain: String,
     pub ip_address: String,
 }
@@ -77,23 +77,32 @@ impl DnsResolver {
         })
     }
 
-    /// Helper to create a TokioAsyncResolver for a given upstream address
-    fn create_resolver(upstream_addr: &str) -> Result<TokioAsyncResolver> {
+    /// Helper to create a TokioResolver for a given upstream address
+    fn create_resolver(upstream_addr: &str) -> Result<TokioResolver> {
         // Parse upstream address
         let upstream_socket: SocketAddr = upstream_addr.parse()
             .map_err(|_| anyhow!("Invalid upstream address: {}", upstream_addr))?;
 
-        // Create custom resolver config with the upstream server
-        let mut config = ResolverConfig::new();
-        config.add_name_server(NameServerConfig {
-            socket_addr: upstream_socket,
-            protocol: Protocol::Udp,
-            tls_dns_name: None,
-            trust_negative_responses: true,
-            bind_addr: None,
-        });
+        // Create connection config for UDP
+        let mut conn_config = ConnectionConfig::udp();
+        conn_config.port = upstream_socket.port();
 
-        Ok(TokioAsyncResolver::tokio(config, ResolverOpts::default()))
+        // Create custom resolver config with the upstream server
+        let name_server = NameServerConfig::new(
+            upstream_socket.ip(),
+            true, // trust_negative_responses
+            vec![conn_config],
+        );
+        let config = ResolverConfig::from_parts(
+            None,
+            vec![],
+            vec![name_server],
+        );
+
+        use hickory_resolver::net::runtime::TokioRuntimeProvider;
+        let resolver = TokioResolver::builder_with_config(config, TokioRuntimeProvider::default())
+            .build()?;
+        Ok(resolver)
     }
 
     /// Select the appropriate resolver for a given domain
@@ -143,7 +152,16 @@ impl DnsResolver {
                 let response = domain_resolver.resolver.ipv4_lookup(name).await
                     .map_err(|e| anyhow!("A record lookup failed for '{}': {}", domain, e))?;
 
-                let ips: Vec<IpAddr> = response.iter().map(|ip| IpAddr::V4(ip.0)).collect();
+                let ips: Vec<IpAddr> = response.answers()
+                    .iter()
+                    .filter_map(|record| {
+                        if let hickory_proto::rr::RData::A(ipv4) = &record.data {
+                            Some(IpAddr::V4((*ipv4).into()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 debug!("Resolved {} to {:?} using {}", domain, ips, domain_resolver.ip_address);
                 Ok(ips)
             }
@@ -151,7 +169,16 @@ impl DnsResolver {
                 let response = domain_resolver.resolver.ipv6_lookup(name).await
                     .map_err(|e| anyhow!("AAAA record lookup failed for '{}': {}", domain, e))?;
 
-                let ips: Vec<IpAddr> = response.iter().map(|ip| IpAddr::V6(ip.0)).collect();
+                let ips: Vec<IpAddr> = response.answers()
+                    .iter()
+                    .filter_map(|record| {
+                        if let hickory_proto::rr::RData::AAAA(ipv6) = &record.data {
+                            Some(IpAddr::V6((*ipv6).into()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 debug!("Resolved {} to {:?} using {}", domain, ips, domain_resolver.ip_address);
                 Ok(ips)
             }
