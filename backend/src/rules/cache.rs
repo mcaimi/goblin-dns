@@ -39,13 +39,14 @@ impl RuleCache {
         debug!("Refreshing rule cache from database");
 
         let active_rules = self.db.get_active_rules().await?;
-        let count = active_rules.len();
+        let total_count = self.count().await;
+        let active_count = active_rules.len();
 
         let mut rules = self.rules.write().await;
         *rules = active_rules;
 
-        info!("Rule cache refreshed - {} active rules loaded", count);
-        Ok(count)
+        info!("Rule cache refreshed - {}/{} active rules loaded", active_count, total_count);
+        Ok(active_count)
     }
 
     /// Starts the automatic refresh loop in the background
