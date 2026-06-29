@@ -8,7 +8,29 @@ use std::sync::Arc;
 use crate::db::Database;
 use crate::dns::ResolverCacheHandle;
 use crate::rules::RuleCacheHandle;
-use super::handlers::*;
+use crate::api::{
+    // app state and helper methods
+    AppState,
+    api_docs,
+    health_check,
+    // stats methods
+    get_stats_for_rule,
+    get_stats_summary,
+    get_all_stats,
+    // proority rules methods
+    create_rule,
+    update_rule,
+    delete_rule,
+    get_rule,
+    list_rules,
+    toggle_rule,
+    // resolvers methods
+    list_resolvers,
+    create_resolver,
+    update_resolver,
+    delete_resolver,
+    get_resolver,
+};
 
 pub fn create_router(
     db: Arc<Database>,
@@ -29,7 +51,10 @@ pub fn create_router(
         // Documentation
         .route("/docs", get(api_docs))
         // Upstream resolvers
-        .route("/resolvers", get(list_resolvers).post(create_resolver))
+        .route(
+            "/resolvers", 
+            get(list_resolvers)
+                .post(create_resolver))
         .route(
             "/resolvers/{id}",
             get(get_resolver)
@@ -37,10 +62,15 @@ pub fn create_router(
                 .delete(delete_resolver),
         )
         // Priority rules
-        .route("/rules", get(list_rules).post(create_rule))
+        .route(
+            "/rules", 
+            get(list_rules)
+                .post(create_rule))
         .route(
             "/rules/{id}",
-            get(get_rule).put(update_rule).delete(delete_rule),
+            get(get_rule)
+                .put(update_rule)
+                .delete(delete_rule),
         )
         .route("/rules/{id}/toggle", patch(toggle_rule))
         // Statistics

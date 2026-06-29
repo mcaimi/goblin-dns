@@ -1,3 +1,4 @@
+// api route
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -6,10 +7,22 @@ use axum::{
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
-use crate::db::Database;
+// local imports (src/)
+use crate::db::{PriorityRule, Statistic, UpstreamResolver, Database};
 use crate::dns::ResolverCacheHandle;
 use crate::rules::RuleCacheHandle;
-use super::models::*;
+use crate::api::{
+    ApiResponse,
+    CreateResponse,
+    UpdateResponse,
+    DeleteResponse,
+    CreateResolverRequest,
+    UpdateResolverRequest,
+    CreateRuleRequest,
+    UpdateRuleRequest,
+    StatsSummaryResponse,
+    StatsQuery
+};
 
 // ========== Application State ==========
 
@@ -24,7 +37,7 @@ pub struct AppState {
 
 pub async fn list_resolvers(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<Vec<crate::db::UpstreamResolver>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<UpstreamResolver>>>, StatusCode> {
     debug!("GET /api/v1/resolvers");
 
     match state.db.get_all_resolvers().await {
@@ -42,7 +55,7 @@ pub async fn list_resolvers(
 pub async fn get_resolver(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> Result<Json<ApiResponse<crate::db::UpstreamResolver>>, StatusCode> {
+) -> Result<Json<ApiResponse<UpstreamResolver>>, StatusCode> {
     debug!("GET /api/v1/resolvers/{}", id);
 
     match state.db.get_resolver_by_id(id).await {
@@ -149,7 +162,7 @@ pub async fn delete_resolver(
 
 pub async fn list_rules(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<Vec<crate::db::PriorityRule>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<PriorityRule>>>, StatusCode> {
     debug!("GET /api/v1/rules");
 
     match state.db.get_all_rules().await {
@@ -167,7 +180,7 @@ pub async fn list_rules(
 pub async fn get_rule(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> Result<Json<ApiResponse<crate::db::PriorityRule>>, StatusCode> {
+) -> Result<Json<ApiResponse<PriorityRule>>, StatusCode> {
     debug!("GET /api/v1/rules/{}", id);
 
     match state.db.get_rule_by_id(id).await {
@@ -310,7 +323,7 @@ pub async fn delete_rule(
 pub async fn get_all_stats(
     State(state): State<AppState>,
     Query(params): Query<StatsQuery>,
-) -> Result<Json<ApiResponse<Vec<crate::db::Statistic>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<Statistic>>>, StatusCode> {
     debug!("GET /api/v1/stats?limit={}&offset={}", params.limit, params.offset);
 
     match state.db.get_all_stats(params.limit, params.offset).await {
@@ -328,7 +341,7 @@ pub async fn get_all_stats(
 pub async fn get_stats_for_rule(
     State(state): State<AppState>,
     Path(rule_id): Path<i64>,
-) -> Result<Json<ApiResponse<Vec<crate::db::Statistic>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<Statistic>>>, StatusCode> {
     debug!("GET /api/v1/stats/rules/{}", rule_id);
 
     match state.db.get_stats_for_rule(rule_id).await {
