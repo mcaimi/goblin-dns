@@ -1,5 +1,10 @@
 use sqlx::SqlitePool;
-use crate::db::models::{UpstreamResolver, PriorityRule, PriorityRuleRow, Statistic};
+use crate::db::models::{
+    UpstreamResolver,
+    PriorityRule,
+    PriorityRuleRow,
+    Statistic
+};
 use anyhow::Result;
 use serde::Serialize;
 

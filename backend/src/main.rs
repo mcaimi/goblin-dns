@@ -7,7 +7,7 @@ mod api;
 
 use config::Config;
 use db::Database;
-use dns::{DnsResolver, DnsServer, DnsHandler, ResolverCache, ResolverCacheHandle};
+use dns::{DnsServer, DnsHandler, ResolverCache, ResolverCacheHandle};
 use rules::{RuleCache, RuleCacheHandle};
 use stats::{StatsCollector, StatsHandle};
 use api::create_router;
@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
     // Initialize rule cache
     let rule_cache = Arc::new(RuleCache::new(database.clone(), config.rules_cache_ttl));
     let rule_cache_handle = RuleCacheHandle::new(rule_cache.clone());
-    info!("Rule cache initialized (TTL: {}s)", config.rules_cache_ttl);
+    info!("Rule cache initialized (TTL: {}s, count: {})", config.rules_cache_ttl, rule_cache_handle.count().await);
 
     // Spawn rule cache refresh loop
     let cache_shutdown = shutdown_token.clone();
@@ -94,10 +94,6 @@ async fn main() -> Result<()> {
             }
         }
     });
-
-    // Create fallback DNS resolver (in case no upstream resolvers are configured)
-    let fallback_resolver = Arc::new(DnsResolver::new(&config.default_upstream).await?);
-    info!("Fallback DNS resolver initialized: {}", config.default_upstream);
 
     // Create DNS handler with resolver cache, rules, and stats
     let handler = DnsHandler::with_resolver_cache(resolver_cache_handle.clone())

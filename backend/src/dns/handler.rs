@@ -1,14 +1,38 @@
-use hickory_server::authority::MessageResponseBuilder;
-use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
-use hickory_proto::op::{Header, OpCode, ResponseCode};
-use hickory_proto::rr::{Record, RData, RecordType, Name};
+// hickory imports
+// DNS Server
+use hickory_server::server::{
+    Request,
+    RequestHandler,
+    ResponseHandler,
+    ResponseInfo
+};
+// zone handler for responses
+use hickory_server::zone_handler::MessageResponseBuilder;
+// protocol specs
+use hickory_proto::{
+    op::{
+        Metadata,
+        MessageType,
+        OpCode,
+        ResponseCode
+    },
+    rr::{
+        Record,
+        RData,
+        RecordType,
+        Name
+    }
+};
+use hickory_net::runtime::Time;
+
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::str::FromStr;
 use tracing::{debug, error, info, warn};
 
-use super::resolver::DnsResolver;
-use super::cache::ResolverCacheHandle;
+// local imports
+use crate::dns::DnsResolver;
+use crate::dns::ResolverCacheHandle;
 use crate::rules::{find_matching_rule, RuleCacheHandle};
 use crate::stats::{StatEvent, StatsHandle};
 
@@ -20,16 +44,6 @@ pub struct DnsHandler {
 }
 
 impl DnsHandler {
-    /// Create a new DNS handler with a fallback resolver
-    pub fn new(resolver: Arc<DnsResolver>) -> Self {
-        Self {
-            resolver_cache: None,
-            fallback_resolver: Some(resolver),
-            rule_cache: None,
-            stats_handle: None,
-        }
-    }
-
     /// Create a DNS handler that uses the resolver cache
     pub fn with_resolver_cache(resolver_cache: ResolverCacheHandle) -> Self {
         Self {
@@ -60,7 +74,9 @@ impl DnsHandler {
     }
 
     async fn handle_query(&self, request: &Request) -> Result<Vec<Record>, ResponseCode> {
-        let query = request.query();
+        // Get the first query (DNS requests typically have one query)
+        let query = request.queries.queries().get(0)
+            .ok_or(ResponseCode::FormErr)?;
         let name = query.name();
         let record_type = query.query_type();
         let client_addr = request.src().ip();
@@ -175,53 +191,93 @@ impl DnsHandler {
 
 #[async_trait::async_trait]
 impl RequestHandler for DnsHandler {
-    async fn handle_request<R: ResponseHandler>(
+    async fn handle_request<R: ResponseHandler, T: Time>(
         &self,
         request: &Request,
         mut response_handle: R,
     ) -> ResponseInfo {
-        let query = request.query();
-
         // Check if this is a query
-        if request.op_code() != OpCode::Query {
-            let mut header = Header::response_from_request(request.header());
-            header.set_response_code(ResponseCode::NotImp);
+        if request.metadata.op_code != OpCode::Query {
+            let mut metadata = Metadata::new(
+                request.metadata.id,
+                MessageType::Response,
+                request.metadata.op_code,
+            );
+            metadata.response_code = ResponseCode::NotImp;
 
             let response = MessageResponseBuilder::from_message_request(request)
-                .build_no_records(header);
+                .build_no_records(metadata);
 
-            return response_handle.send_response(response).await.unwrap_or_else(|e| {
-                error!("Failed to send response: {}", e);
-                Header::default().into()
-            });
+            return response_handle.send_response(response)
+                .await
+                .unwrap_or_else(|_| {
+                    let mut meta = Metadata::new(
+                        request.metadata.id,
+                        MessageType::Response,
+                        OpCode::Query,
+                    );
+                    meta.response_code = ResponseCode::ServFail;
+                    ResponseInfo::from(hickory_proto::op::Header {
+                        metadata: meta,
+                        counts: hickory_proto::op::HeaderCounts::default(),
+                    })
+                });
         }
 
         // Handle the query
         match self.handle_query(request).await {
             Ok(records) => {
-                let mut header = Header::response_from_request(request.header());
-                header.set_response_code(ResponseCode::NoError);
-                header.set_authoritative(false);
+                let mut metadata = Metadata::new(
+                    request.metadata.id,
+                    MessageType::Response,
+                    OpCode::Query,
+                );
+                metadata.response_code = ResponseCode::NoError;
+                metadata.authoritative = false;
 
                 let response = MessageResponseBuilder::from_message_request(request)
-                    .build(header, records.iter(), &[], &[], &[]);
+                    .build(metadata, &records, &[], &[], &[]);
 
-                response_handle.send_response(response).await.unwrap_or_else(|e| {
-                    error!("Failed to send response: {}", e);
-                    Header::default().into()
-                })
+                response_handle.send_response(response)
+                    .await
+                    .unwrap_or_else(|_| {
+                        let mut meta = Metadata::new(
+                            request.metadata.id,
+                            MessageType::Response,
+                            OpCode::Query,
+                        );
+                        meta.response_code = ResponseCode::ServFail;
+                        ResponseInfo::from(hickory_proto::op::Header {
+                            metadata: meta,
+                            counts: hickory_proto::op::HeaderCounts::default(),
+                        })
+                    })
             }
             Err(response_code) => {
-                let mut header = Header::response_from_request(request.header());
-                header.set_response_code(response_code);
+                let mut metadata = Metadata::new(
+                    request.metadata.id,
+                    MessageType::Response,
+                    OpCode::Query,
+                );
+                metadata.response_code = response_code;
 
                 let response = MessageResponseBuilder::from_message_request(request)
-                    .build_no_records(header);
+                    .build_no_records(metadata);
 
-                response_handle.send_response(response).await.unwrap_or_else(|e| {
-                    error!("Failed to send response: {}", e);
-                    Header::default().into()
-                })
+                response_handle.send_response(response)
+                    .await
+                    .unwrap_or_else(|_| {
+                        let mut meta = Metadata::new(
+                            request.metadata.id,
+                            MessageType::Response,
+                            OpCode::Query,
+                        );
+                        meta.response_code = ResponseCode::ServFail;
+                        ResponseInfo::from(hickory_proto::op::Header {
+                            metadata: meta,
+                            counts: hickory_proto::op::HeaderCounts::default(),
+                        })
+                    })
             }
         }
     }

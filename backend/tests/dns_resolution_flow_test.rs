@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 mod tests {
-    use goblin::dns::resolver::{DnsResolver, DomainResolver};
+    use goblin::dns::resolver::{DnsResolver};
     use goblin::db::models::UpstreamResolver;
 
     #[tokio::test]

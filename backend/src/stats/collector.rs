@@ -73,18 +73,6 @@ impl StatsHandle {
         Self { sender }
     }
 
-    /// Records a statistics event (non-blocking)
-    /// Returns true if the event was queued successfully
-    pub async fn record(&self, event: StatEvent) -> bool {
-        match self.sender.send(event).await {
-            Ok(_) => true,
-            Err(e) => {
-                error!("Failed to send statistics event: {}", e);
-                false
-            }
-        }
-    }
-
     /// Tries to record a statistics event without blocking
     /// Returns true if the event was queued successfully
     pub fn try_record(&self, event: StatEvent) -> bool {
@@ -120,7 +108,7 @@ mod tests {
         };
 
         // Record event
-        assert!(handle.record(event.clone()).await);
+        assert!(handle.try_record(event.clone()));
 
         // Verify it was received
         let received = receiver.recv().await.unwrap();

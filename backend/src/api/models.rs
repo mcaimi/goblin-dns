@@ -77,14 +77,6 @@ impl<T> ApiResponse<T> {
             error: None,
         }
     }
-
-    pub fn error(message: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(message),
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]
