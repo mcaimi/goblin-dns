@@ -1,9 +1,11 @@
-use crate::db::Database;
-use crate::dns::resolver::DnsResolver;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
+
+// local imports
+use crate::db::Database;
+use crate::dns::resolver::DnsResolver;
 
 /// In-memory cache of upstream resolvers
 /// Periodically refreshes from database to stay up-to-date

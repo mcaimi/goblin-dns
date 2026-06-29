@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use anyhow::Result;
 use tracing::info;
 
-use super::handler::DnsHandler;
+use crate::dns::DnsHandler;
 
 pub struct DnsServer {
     bind_address: SocketAddr,

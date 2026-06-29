@@ -1,15 +1,38 @@
-use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
+// hickory imports
+// DNS Server
+use hickory_server::server::{
+    Request,
+    RequestHandler,
+    ResponseHandler,
+    ResponseInfo
+};
+// zone handler for responses
 use hickory_server::zone_handler::MessageResponseBuilder;
-use hickory_proto::op::{Metadata, MessageType, OpCode, ResponseCode};
-use hickory_proto::rr::{Record, RData, RecordType, Name};
+// protocol specs
+use hickory_proto::{
+    op::{
+        Metadata,
+        MessageType,
+        OpCode,
+        ResponseCode
+    },
+    rr::{
+        Record,
+        RData,
+        RecordType,
+        Name
+    }
+};
 use hickory_net::runtime::Time;
+
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::str::FromStr;
 use tracing::{debug, error, info, warn};
 
-use super::resolver::DnsResolver;
-use super::cache::ResolverCacheHandle;
+// local imports
+use crate::dns::DnsResolver;
+use crate::dns::ResolverCacheHandle;
 use crate::rules::{find_matching_rule, RuleCacheHandle};
 use crate::stats::{StatEvent, StatsHandle};
 
@@ -21,16 +44,6 @@ pub struct DnsHandler {
 }
 
 impl DnsHandler {
-    /// Create a new DNS handler with a fallback resolver
-    pub fn new(resolver: Arc<DnsResolver>) -> Self {
-        Self {
-            resolver_cache: None,
-            fallback_resolver: Some(resolver),
-            rule_cache: None,
-            stats_handle: None,
-        }
-    }
-
     /// Create a DNS handler that uses the resolver cache
     pub fn with_resolver_cache(resolver_cache: ResolverCacheHandle) -> Self {
         Self {

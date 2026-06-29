@@ -40,12 +40,12 @@ impl DnsResolver {
             };
 
             if upstream.domain == "core" {
+                info!("Adding core resolver: {}", domain_resolver.ip_address);
                 core_resolvers.push(domain_resolver);
-                info!("Added core resolver: {}", upstream.ip_address);
             } else {
+                info!("Adding domain-specific resolver: {} for domain '{}'",
+                      domain_resolver.ip_address, domain_resolver.domain);
                 domain_resolvers.insert(upstream.domain.clone(), domain_resolver);
-                info!("Added domain-specific resolver: {} for domain '{}'",
-                      upstream.ip_address, upstream.domain);
             }
         }
 
@@ -56,24 +56,6 @@ impl DnsResolver {
         Ok(Self {
             domain_resolvers,
             core_resolvers,
-        })
-    }
-
-    /// Create a resolver for a single upstream server (legacy compatibility)
-    pub async fn new(upstream_addr: &str) -> Result<Self> {
-        let resolver = Self::create_resolver(upstream_addr)?;
-
-        let domain_resolver = DomainResolver {
-            resolver,
-            domain: "core".to_string(),
-            ip_address: upstream_addr.to_string(),
-        };
-
-        info!("DNS resolver initialized with single upstream: {}", upstream_addr);
-
-        Ok(Self {
-            domain_resolvers: HashMap::new(),
-            core_resolvers: vec![domain_resolver],
         })
     }
 
@@ -187,13 +169,5 @@ impl DnsResolver {
                 Ok(vec![])
             }
         }
-    }
-
-    pub async fn resolve_a(&self, domain: &str) -> Result<Vec<IpAddr>> {
-        self.resolve(domain, RecordType::A).await
-    }
-
-    pub async fn resolve_aaaa(&self, domain: &str) -> Result<Vec<IpAddr>> {
-        self.resolve(domain, RecordType::AAAA).await
     }
 }
