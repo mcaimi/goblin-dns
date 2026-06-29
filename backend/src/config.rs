@@ -33,10 +33,6 @@ pub struct CliArgs {
     /// Log level (trace, debug, info, warn, error)
     #[arg(long)]
     pub log_level: Option<String>,
-
-    /// Default upstream DNS resolver (used as fallback)
-    #[arg(long)]
-    pub default_upstream: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,7 +44,6 @@ pub struct Config {
     pub database_path: String,
     pub rules_cache_ttl: u64,
     pub log_level: String,
-    pub default_upstream: String,
 }
 
 impl Config {
@@ -63,7 +58,6 @@ impl Config {
             database_path: cli.database_path.or_else(|| env::var("DATABASE_PATH").ok()).unwrap_or_else(|| "./goblin.db".to_string()),
             rules_cache_ttl: cli.rules_cache_ttl.or_else(|| env::var("RULES_CACHE_TTL").ok().and_then(|s| s.parse().ok())).unwrap_or(60),
             log_level: cli.log_level.or_else(|| env::var("LOG_LEVEL").ok()).unwrap_or_else(|| "info".to_string()),
-            default_upstream: cli.default_upstream.or_else(|| env::var("DEFAULT_UPSTREAM").ok()).unwrap_or_else(|| "8.8.8.8:53".to_string()),
         }
     }
 
