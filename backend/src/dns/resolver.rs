@@ -1,6 +1,7 @@
 use hickory_resolver::TokioResolver;
 use hickory_resolver::config::{ResolverConfig, NameServerConfig, ConnectionConfig};
 use hickory_proto::rr::{Name, RecordType};
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::collections::HashMap;
@@ -81,7 +82,6 @@ impl DnsResolver {
             vec![name_server],
         );
 
-        use hickory_resolver::net::runtime::TokioRuntimeProvider;
         let resolver = TokioResolver::builder_with_config(config, TokioRuntimeProvider::default())
             .build()?;
         Ok(resolver)
@@ -89,7 +89,7 @@ impl DnsResolver {
 
     /// Select the appropriate resolver for a given domain
     /// Returns None if no resolver is available
-    fn select_resolver(&self, domain: &str) -> Option<&DomainResolver> {
+    pub fn select_resolver(&self, domain: &str) -> Option<&DomainResolver> {
         let normalized = domain.to_lowercase().trim_end_matches('.').to_string();
 
         // First, check for exact domain match
