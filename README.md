@@ -1,6 +1,10 @@
-# GOBLIN - DNS Redirector for Security Researchers
+#
 
-A dynamic DNS redirector with REST API and Web UI, designed for security researchers and reverse engineers.
+![goblin-icon](frontend/public/goblin.png)
+
+# GOBLIN - DNS Redirector
+
+A dynamic DNS redirector with REST API and Web UI, designed to aid security researchers and reverse engineers.
 
 ## Features
 
@@ -13,20 +17,30 @@ A dynamic DNS redirector with REST API and Web UI, designed for security researc
 
 ## Project Status
 
-- ✅ Rust project structure
+### Backend
+
 - ✅ SQLite database schema and migrations
 - ✅ Basic DNS resolver (UDP/TCP)
 - ✅ Database layer with models and queries
 - ✅ Configuration management
 - ✅ Logging infrastructure
+
+### Resolver Status
+
 - ✅ Priority rule matching (domain + client IP/CIDR filtering)
 - ✅ In-memory rule cache with periodic refresh
 - ✅ Statistics collection via async channels
 - ✅ Integration with DNS resolver
+
+### API Layer
+
 - ✅ Full REST API with Axum
 - ✅ CRUD endpoints for resolvers and rules
 - ✅ Statistics retrieval endpoints
 - ✅ CORS support for frontend
+
+### Web UI
+
 - ✅ React + TypeScript web interface
 - ✅ TanStack Query for state management
 - ✅ Upstream resolver management UI
@@ -111,7 +125,6 @@ API_CORS_ENABLED=true
 DATABASE_PATH=./goblin.db
 RULES_CACHE_TTL=60
 LOG_LEVEL=info
-DEFAULT_UPSTREAM=8.8.8.8:53
 ```
 
 #### Command-Line Arguments
@@ -121,7 +134,6 @@ cargo run -- \
   --dns-bind-address 0.0.0.0:53 \
   --api-bind-address 0.0.0.0:8080 \
   --database-path ./goblin.db \
-  --default-upstream 8.8.8.8:53 \
   --log-level debug
 ```
 
@@ -240,6 +252,7 @@ GOBLIN uses a **frontend-as-proxy** architecture for security and simplified dep
 ```
 
 **Security Benefits:**
+
 - Backend API port is not exposed to users
 - Single entry point (port 3000) for all HTTP traffic
 - nginx handles SSL termination and security headers
@@ -311,6 +324,7 @@ frontend/
 ## Dependencies
 
 ### Backend
+
 - **tokio** - Async runtime
 - **hickory-dns** - DNS protocol implementation
 - **axum** - Web framework for REST API
@@ -320,6 +334,7 @@ frontend/
 - **tower-http** - CORS middleware
 
 ### Frontend
+
 - **React 18** - UI framework
 - **TypeScript** - Type safety
 - **TanStack Query** - Data fetching and caching
