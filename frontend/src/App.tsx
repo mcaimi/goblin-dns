@@ -23,7 +23,7 @@ function App() {
             <div className="navbar-brand">
               <div className="navbar-brand-text">
                 <h1>GOBLIN - DNS Redirector</h1>
-                <span className="navbar-subtitle">Security Research Tool</span>
+                <span className="navbar-subtitle">Dynamic, Rule-Based DNS Resolver</span>
               </div>
               <img src="/goblin.png" width="128" height="128" alt="GOBLIN" />
             </div>
@@ -49,7 +49,7 @@ function App() {
           </main>
 
           <footer className="footer">
-            <p>GOBLIN v0.1.0 - A DNS redirector for security researchers</p>
+            <p>GOBLIN v0.1.0 - A Dynamic, Rule-Based DNS Resolver</p>
           </footer>
         </div>
       </BrowserRouter>
