@@ -4,7 +4,9 @@
 
 # GOBLIN - DNS Redirector
 
-A dynamic DNS redirector with REST API and Web UI, designed to aid security researchers and reverse engineers.
+A dynamic DNS redirector with REST API and Web UI, specifically designed around security research.
+
+This software allows users to dynamically redirect traffic to specific IPs, in order to capture data && perform protocol analysis.
 
 ## Features
 
@@ -179,22 +181,22 @@ curl http://localhost:8080/api/v1/health
 
 # Upstream Resolvers
 GET    /api/v1/resolvers              # List all
-GET    /api/v1/resolvers/:id          # Get one
+GET    /api/v1/resolvers/{id}         # Get one
 POST   /api/v1/resolvers              # Create
-PUT    /api/v1/resolvers/:id          # Update
-DELETE /api/v1/resolvers/:id          # Delete
+PUT    /api/v1/resolvers/{id}          # Update
+DELETE /api/v1/resolvers/{id}          # Delete
 
 # Priority Rules
 GET    /api/v1/rules                  # List all
-GET    /api/v1/rules/:id              # Get one
+GET    /api/v1/rules/{id}              # Get one
 POST   /api/v1/rules                  # Create
-PUT    /api/v1/rules/:id              # Update
-PATCH  /api/v1/rules/:id/toggle       # Toggle active/inactive
-DELETE /api/v1/rules/:id              # Delete
+PUT    /api/v1/rules/{id}              # Update
+PATCH  /api/v1/rules/{id}/toggle       # Toggle active/inactive
+DELETE /api/v1/rules/{id}              # Delete
 
 # Statistics
 GET    /api/v1/stats                  # Get all (paginated)
-GET    /api/v1/stats/rules/:rule_id   # Get for specific rule
+GET    /api/v1/stats/rules/{rule_id}   # Get for specific rule
 GET    /api/v1/stats/summary          # Get summary
 ```
 
